@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI 页面模块分析器</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>UI 页面模块识别</h1>
+    <p>上传截图 → OpenCV 检测区域（默认）/ SAM 精确分割 → LLM 理解功能</p>
+  </header>
+
+  <main>
+    <!-- 上传区 -->
+    <section class="upload-section card">
+      <div class="upload-zone" id="uploadZone">
+        <p>📁 拖拽或点击上传页面截图</p>
+        <input type="file" id="fileInput" accept="image/*" hidden>
+        <div class="upload-actions">
+          <button class="btn" id="uploadBtn">选择图片</button>
+          <span class="mode-toggle">
+            <label class="switch-label">
+              <input type="checkbox" id="modeToggle">
+              <span class="switch-text">SAM 精确模式（较慢）</span>
+            </label>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 结果区 -->
+    <section class="result-section" id="resultSection" style="display:none">
+      <div class="result-panels">
+        <!-- 左侧: 原图 + 标注 -->
+        <div class="panel card">
+          <h3>标注结果</h3>
+          <div class="image-wrapper" id="imageWrapper">
+            <img id="annotatedImage" src="" alt="标注图">
+            <!-- 悬浮提示 -->
+            <div class="tooltip" id="tooltip" style="display:none"></div>
+          </div>
+          <div class="legend" id="legend"></div>
+        </div>
+
+        <!-- 右侧: 区域详情 -->
+        <div class="panel card">
+          <h3>区域详情</h3>
+          <div class="region-list" id="regionList">
+            <p class="hint">左侧标注图中每个彩色框对应一个区域</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 加载中 -->
+    <div class="loading" id="loading" style="display:none">
+      <div class="spinner"></div>
+      <p id="loadingText">正在分析...</p>
+    </div>
+  </main>
+</div>
+
+<script src="/script.js"></script>
+</body>
+</html>

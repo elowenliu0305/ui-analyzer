@@ -1,0 +1,19 @@
+# SAM 模型文件（体积太大）
+sam_vit_b_01ec64.pth
+*.pth
+
+# 配置（含 API Key）
+config.json
+
+# 运行时生成的文件
+uploads/*
+output/*
+!uploads/.gitkeep
+!output/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.env
+.venv/
+.DS_Store

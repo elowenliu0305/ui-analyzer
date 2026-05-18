@@ -1,0 +1,206 @@
+// UI Analyzer — 前端交互逻辑
+let currentData = null;
+
+// ─── 上传 ───
+const uploadZone = document.getElementById("uploadZone");
+const fileInput = document.getElementById("fileInput");
+const uploadBtn = document.getElementById("uploadBtn");
+
+uploadBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+
+uploadZone.addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON" && e.target.tagName !== "INPUT" && e.target.tagName !== "LABEL") {
+    fileInput.click();
+  }
+});
+
+uploadZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  uploadZone.classList.add("dragover");
+});
+
+uploadZone.addEventListener("dragleave", () => {
+  uploadZone.classList.remove("dragover");
+});
+
+uploadZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove("dragover");
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length) uploadFile(fileInput.files[0]);
+  fileInput.value = "";
+});
+
+// ─── 分析流程 ───
+async function uploadFile(file) {
+  const modeToggle = document.getElementById("modeToggle");
+  const mode = modeToggle.checked ? "sam" : "opencv";
+  const modeName = mode === "sam" ? "SAM 精确检测" : "OpenCV 快速检测";
+  showLoading(modeName + "...");
+
+  document.getElementById("resultSection").style.display = "none";
+
+  const form = new FormData();
+  form.append("image", file);
+  form.append("mode", mode);
+
+  try {
+    const resp = await fetch("/api/analyze", { method: "POST", body: form });
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) {
+      console.error("Response not JSON:", text.slice(0, 200));
+      alert("服务器返回异常");
+      hideLoading();
+      return;
+    }
+    if (data.error) { alert(data.error); hideLoading(); return; }
+
+    currentData = data;
+    showResult(data, modeName);
+    hideLoading();
+  } catch (e) {
+    alert("请求失败: " + e.message);
+    hideLoading();
+  }
+}
+
+// ─── 显示结果 ───
+function showResult(data, modeName) {
+  document.getElementById("resultSection").style.display = "block";
+
+  const img = document.getElementById("annotatedImage");
+  img.src = data.annotated + "?t=" + Date.now();
+
+  // 图例
+  const typeColors = {
+    "nav": "#ff0000", "search": "#00ffff", "content": "#00ff00",
+    "card": "#ffa500", "button": "#ff00ff", "input": "#ffff00",
+    "icon": "#ff8000", "text": "#c8c800", "list": "#00c8c8", "avatar": "#c86464",
+    "footer": "#0000ff", "unknown": "#808080"
+  };
+
+  const legend = document.getElementById("legend");
+  legend.innerHTML = "";
+  const seen = new Set();
+  data.regions.forEach(r => {
+    if (seen.has(r.type)) return;
+    seen.add(r.type);
+    const item = document.createElement("span");
+    item.className = "legend-item";
+    item.innerHTML = `<span class="legend-dot" style="background:${typeColors[r.type]||'#808080'}"></span>${r.type}`;
+    legend.appendChild(item);
+  });
+
+  renderRegionList(data.regions, typeColors);
+}
+
+// ─── 区域列表（按交互功能分组） ───
+function renderRegionList(regions, typeColors) {
+  const list = document.getElementById("regionList");
+  list.innerHTML = "";
+
+  if (!typeColors) {
+    typeColors = {
+      "nav": "#ff0000", "search": "#00ffff", "content": "#00ff00",
+      "card": "#ffa500", "button": "#ff00ff", "input": "#ffff00",
+      "icon": "#ff8000", "text": "#c8c800", "list": "#00c8c8", "avatar": "#c86464",
+      "footer": "#0000ff", "unknown": "#808080"
+    };
+  }
+
+  // 功能分类规则
+  function classifyRegion(r) {
+    const action = (r.llm_action || "").toLowerCase();
+    const type = (r.type || "").toLowerCase();
+    const desc = (r.llm_desc || "").toLowerCase();
+    const text = action + " " + type + " " + desc;
+
+    if (/输入|键入|填写|搜索\b|键入/.test(text)) return "input";
+    if (/点击|按钮|提交|确认|取消|删除|保存|关闭|打开|切换|跳转|选择|复制/.test(text)) return "click";
+    if (/链接|导航|菜单|标签|返回|首页|tab|menu/.test(text)) return "nav";
+    if (/滚动|滑动|拖动|轮播|翻页|滚动/.test(text)) return "scroll";
+    if (/内容|文章|文本|文案|描述|说明|详情|介绍|标题|段落|文字/.test(text)) return "read";
+    if (/图片|图像|照片|图标|头像|logo|avatar|icon/.test(text)) return "image";
+    if (/卡片|card|列表|list|网格|grid/.test(text)) return "card";
+    return "other";
+  }
+
+  // 分类定义
+  const categories = {
+    input: { label: "可输入", icon: "⌨️", color: "#00b894", items: [] },
+    click:  { label: "可点击", icon: "🖱️", color: "#e17055", items: [] },
+    nav:    { label: "导航跳转", icon: "🧭", color: "#6c5ce7", items: [] },
+    scroll: { label: "可滚动/滑动", icon: "↕️", color: "#0984e3", items: [] },
+    read:   { label: "内容阅读", icon: "📖", color: "#2d3436", items: [] },
+    image:  { label: "图片/图标展示", icon: "🖼️", color: "#00cec9", items: [] },
+    card:   { label: "卡片/列表", icon: "📇", color: "#fdcb6e", items: [] },
+    other:  { label: "其他", icon: "▪️", color: "#b2bec3", items: [] },
+  };
+
+  regions.forEach(r => {
+    const cat = classifyRegion(r);
+    if (categories[cat]) categories[cat].items.push(r);
+    else categories.other.items.push(r);
+  });
+
+  // 只显示有内容的分类，按优先级排序
+  const priority = ["click", "input", "nav", "read", "card", "image", "scroll", "other"];
+  priority.forEach(key => {
+    const cat = categories[key];
+    if (cat.items.length === 0) return;
+
+    const section = document.createElement("div");
+    section.className = "region-section";
+
+    const header = document.createElement("div");
+    header.className = "section-header";
+    header.style.color = cat.color;
+    header.textContent = `${cat.icon} ${cat.label}（${cat.items.length}）`;
+    section.appendChild(header);
+
+    cat.items.forEach(r => {
+      const div = document.createElement("div");
+      div.className = "region-item";
+      div.onclick = () => document.getElementById("imageWrapper").scrollIntoView({ behavior: "smooth" });
+
+      const hasLLM = r.llm_desc && r.llm_action;
+
+      div.innerHTML = `
+        <div class="region-header">
+          <span class="region-id">#${r.id}</span>
+          <span class="cv-type-badge" style="border-left: 3px solid ${typeColors[r.type]||'#808080'}">${r.type}</span>
+        </div>
+        ${hasLLM ? `
+          <div class="region-llm">
+            <div class="llm-desc">${r.llm_desc}</div>
+            <div class="llm-action">${cat.icon} ${r.llm_action}</div>
+          </div>
+        ` : `
+          <div style="font-size:12px;color:#999">${r.action}</div>
+        `}
+        <div class="region-bbox">[${r.bbox.join(", ")}]</div>
+      `;
+      section.appendChild(div);
+    });
+
+    list.appendChild(section);
+  });
+}
+
+// ─── Loading ───
+function showLoading(text) {
+  const el = document.getElementById("loading");
+  document.getElementById("loadingText").textContent = text || "正在分析...";
+  el.style.display = "flex";
+}
+function hideLoading() {
+  document.getElementById("loading").style.display = "none";
+}
