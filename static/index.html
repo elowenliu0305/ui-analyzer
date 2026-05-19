@@ -35,11 +35,17 @@
     <!-- 结果区 -->
     <section class="result-section" id="resultSection" style="display:none">
       <div class="result-panels">
-        <!-- 左侧: 原图 + 标注 -->
+        <!-- 左侧: 标注图 -->
         <div class="panel card">
-          <h3>标注结果</h3>
+          <div class="panel-header">
+            <h3>检测结果</h3>
+            <div class="view-toggle">
+              <button class="view-btn active" data-view="annotated">区域</button>
+              <button class="view-btn" data-view="lines">分隔线</button>
+            </div>
+          </div>
           <div class="image-wrapper" id="imageWrapper">
-            <img id="annotatedImage" src="" alt="标注图">
+            <img id="annotatedImage" src="" alt="标注图" data-current-view="annotated">
             <!-- 悬浮提示 -->
             <div class="tooltip" id="tooltip" style="display:none"></div>
           </div>

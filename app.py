@@ -14,6 +14,7 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from detector import detect_regions
 from detector_sam import SAMDetector
 from llm_analyzer import analyze_regions_with_llm
+from line_detector import detect_lines as detect_lines_in_image
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
@@ -41,6 +42,28 @@ def load_config():
 
 # SAM 检测器（懒加载）
 _sam_detector = None
+
+
+def _get_nearby_lines(bbox, lines, max_dist=20):
+    """找离 bbox [x1,y1,x2,y2] 最近的线。"""
+    x1, y1, x2, y2 = bbox
+    nearby = []
+    for l in lines:
+        if l["orientation"] == "horizontal":
+            pos = l["position"]
+            lx1, lx2 = l["start"], l["end"]
+            # 线在 bbox 附近且水平跨度与 bbox 有重叠
+            if y1 - max_dist <= pos <= y2 + max_dist and lx1 < x2 and lx2 > x1:
+                dist = min(abs(pos - y1), abs(pos - y2))
+                nearby.append({**l, "distance": round(dist, 1)})
+        else:
+            pos = l["position"]
+            ly1, ly2 = l["start"], l["end"]
+            if x1 - max_dist <= pos <= x2 + max_dist and ly1 < y2 and ly2 > y1:
+                dist = min(abs(pos - x1), abs(pos - x2))
+                nearby.append({**l, "distance": round(dist, 1)})
+    nearby.sort(key=lambda x: x["distance"])
+    return nearby[:3]
 
 
 def get_sam_detector():
@@ -106,15 +129,36 @@ def analyze():
         except Exception as e:
             print(f"[LLM] 理解失败: {e}")
 
+    # ─── 线检测（始终进行，作为参考） ───
+    try:
+        lines, line_vis = detect_lines_in_image(str(img_path))
+        print(f"[LINE] 检测到 {len(lines)} 条分隔线")
+    except Exception as e:
+        print(f"[LINE] 检测失败: {e}")
+        lines, line_vis = [], None
+
     # 保存标注图
     annot_name = f"{uid}_annotated.png"
     annot_path = OUTPUT / annot_name
     cv2.imwrite(str(annot_path), annotated)
 
+    # 保存线检测可视化
+    line_vis_name = None
+    if line_vis is not None:
+        line_vis_name = f"{uid}_lines.png"
+        line_vis_path = OUTPUT / line_vis_name
+        cv2.imwrite(str(line_vis_path), line_vis)
+
+    # 合并线信息到 regions
+    for r in regions:
+        r["nearby_lines"] = _get_nearby_lines(r["bbox"], lines)
+
     return jsonify({
         "image": f"/uploads/{img_name}",
         "annotated": f"/output/{annot_name}",
+        "lines_image": f"/output/{line_vis_name}" if line_vis_name else None,
         "regions": regions,
+        "lines": lines,
         "mode": mode,
     })
 

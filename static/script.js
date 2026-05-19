@@ -1,6 +1,28 @@
 // UI Analyzer — 前端交互逻辑
 let currentData = null;
 
+// ─── 视图切换（区域 ↔ 分隔线） ───
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".view-btn");
+  if (!btn) return;
+  if (btn.classList.contains("active")) return;
+
+  const toggle = btn.parentElement;
+  toggle.querySelectorAll(".view-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+
+  const view = btn.dataset.view;
+  const img = document.getElementById("annotatedImage");
+
+  if (view === "lines" && currentData && currentData.lines_image) {
+    img.src = currentData.lines_image + "?t=" + Date.now();
+    img.dataset.currentView = "lines";
+  } else if (view === "annotated" && currentData) {
+    img.src = currentData.annotated + "?t=" + Date.now();
+    img.dataset.currentView = "annotated";
+  }
+});
+
 // ─── 上传 ───
 const uploadZone = document.getElementById("uploadZone");
 const fileInput = document.getElementById("fileInput");
@@ -78,6 +100,7 @@ function showResult(data, modeName) {
 
   const img = document.getElementById("annotatedImage");
   img.src = data.annotated + "?t=" + Date.now();
+  img.dataset.currentView = "annotated";
 
   // 图例
   const typeColors = {
@@ -98,6 +121,28 @@ function showResult(data, modeName) {
     item.innerHTML = `<span class="legend-dot" style="background:${typeColors[r.type]||'#808080'}"></span>${r.type}`;
     legend.appendChild(item);
   });
+
+  // 分隔线统计
+  if (data.lines && data.lines.length > 0) {
+    const lineTypes = {};
+    data.lines.forEach(l => {
+      const key = l.interface_subtype ? `${l.line_type}/${l.interface_subtype}` : l.line_type;
+      lineTypes[key] = (lineTypes[key] || 0) + 1;
+    });
+    const lineStats = Object.entries(lineTypes).map(([k, v]) => `${k}:${v}`).join(" | ");
+    const lineInfo = document.createElement("details");
+    lineInfo.className = "lines-info";
+    lineInfo.innerHTML = `
+      <summary>📏 分隔线参考（${data.lines.length} 条）</summary>
+      <div style="margin-top:4px;font-size:11px;color:#999">${lineStats}</div>
+      <div style="margin-top:6px">
+        <span class="line-dot" style="background:#ff0000"></span> 实体线
+        <span class="line-dot" style="background:#ffa500;margin-left:8px"></span> 界面线(纯色/混色)
+        <span class="line-dot" style="background:#ffff00;margin-left:8px"></span> 界面线(混色/混色)
+      </div>
+    `;
+    legend.appendChild(lineInfo);
+  }
 
   renderRegionList(data.regions, typeColors);
 }
@@ -187,6 +232,11 @@ function renderRegionList(regions, typeColors) {
           <div style="font-size:12px;color:#999">${r.action}</div>
         `}
         <div class="region-bbox">[${r.bbox.join(", ")}]</div>
+        ${r.nearby_lines && r.nearby_lines.length > 0 ? `
+          <div style="font-size:10px;color:#bbb;margin-top:2px">
+            📏 ${r.nearby_lines.map(l => `${l.line_type}(${l.distance}px)`).join(", ")}
+          </div>
+        ` : ""}
       `;
       section.appendChild(div);
     });

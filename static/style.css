@@ -279,6 +279,75 @@ header p  { color: #666; font-size: 14px; margin-top: 4px; }
   margin-top: 4px;
 }
 
+/* ─── View Toggle ─── */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+.panel-header h3 {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.view-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.view-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: none;
+  background: #f5f5f5;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+}
+.view-btn:not(:last-child) {
+  border-right: 1px solid #ddd;
+}
+.view-btn.active {
+  background: #6c5ce7;
+  color: #fff;
+}
+.view-btn:hover:not(.active) {
+  background: #e8e8e8;
+}
+
+/* ─── Lines Info ─── */
+.lines-info {
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+.lines-info summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+.lines-info .line-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 11px;
+}
+.line-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
 /* ─── Loading ─── */
 .loading {
   position: fixed;
