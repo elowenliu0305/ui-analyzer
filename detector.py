@@ -31,6 +31,37 @@ FUNC_INFO = {
 }
 
 
+def classify_region(x1, y1, x2, y2, img_w, img_h):
+    """根据位置和尺寸分类区域类型（独立函数，可被外部调用）。"""
+    bw, bh = x2 - x1, y2 - y1
+    aspect = bw / bh if bh > 0 else 0
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+    ratio = (bw * bh) / (img_w * img_h)
+
+    if cy < img_h * 0.10 and aspect > 2:
+        return "nav"
+    if cy > img_h * 0.92 and aspect > 2:
+        return "footer"
+    if ratio > 0.15:
+        return "content"
+    if ratio < 0.008 and 0.5 < aspect < 2.0 and (cx < img_w * 0.08 or cx > img_w * 0.92):
+        return "icon"
+    if ratio < 0.006 and aspect > 1.5 and bh < img_h * 0.025:
+        return "text"
+    if ratio > 0.02 and 0.4 < aspect < 3:
+        return "card"
+    if bh < img_h * 0.05 and bw > img_w * 0.08:
+        return "input"
+    if ratio < 0.04 and aspect > 2 and bw > img_w * 0.1:
+        return "search"
+    if ratio < 0.008 and 0.5 < aspect < 2.0:
+        return "icon"
+    if ratio < 0.04 and 0.4 < aspect < 2.5:
+        return "button"
+    return "unknown"
+
+
 def get_content_mask(gray):
     """生成内容区域二值图"""
     mean_b = gray.mean()
@@ -141,42 +172,12 @@ def detect_regions(img_path):
         if keep:
             filtered.append(b)
 
-    # ─── 分类（v7 原版） ───
-    def classify(x1, y1, x2, y2):
-        bw, bh = x2 - x1, y2 - y1
-        aspect = bw / bh if bh > 0 else 0
-        cx = (x1 + x2) / 2
-        cy = (y1 + y2) / 2
-        ratio = (bw * bh) / (w * h)
-
-        if cy < h * 0.10 and aspect > 2:
-            return "nav"
-        if cy > h * 0.92 and aspect > 2:
-            return "footer"
-        if ratio > 0.15:
-            return "content"
-        if ratio < 0.008 and 0.5 < aspect < 2.0 and (cx < w * 0.08 or cx > w * 0.92):
-            return "icon"
-        if ratio < 0.006 and aspect > 1.5 and bh < h * 0.025:
-            return "text"
-        if ratio > 0.02 and 0.4 < aspect < 3:
-            return "card"
-        if bh < h * 0.05 and bw > w * 0.08:
-            return "input"
-        if ratio < 0.04 and aspect > 2 and bw > w * 0.1:
-            return "search"
-        if ratio < 0.008 and 0.5 < aspect < 2.0:
-            return "icon"
-        if ratio < 0.04 and 0.4 < aspect < 2.5:
-            return "button"
-        return "unknown"
-
     # ─── 渲染 ───
     canvas = original.copy()
     modules = []
 
     for i, (x1, y1, x2, y2) in enumerate(filtered):
-        rtype = classify(x1, y1, x2, y2)
+        rtype = classify_region(x1, y1, x2, y2, w, h)
         desc, action = FUNC_INFO.get(rtype, ("未知", "待确认"))
         color = COLORS.get(rtype, COLORS["unknown"])
 

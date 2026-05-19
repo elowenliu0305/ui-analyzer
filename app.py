@@ -15,6 +15,7 @@ from detector import detect_regions
 from detector_sam import SAMDetector
 from llm_analyzer import analyze_regions_with_llm
 from line_detector import detect_lines as detect_lines_in_image
+from region_refiner import refine_regions_with_lines
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
@@ -120,7 +121,39 @@ def analyze():
         traceback.print_exc()
         return jsonify({"error": f"检测失败: {str(e)}"}), 500
 
-    # ─── 自动 LLM 理解（如果配置了 key） ───
+    # ─── 线检测（始终进行） ───
+    try:
+        lines, line_vis = detect_lines_in_image(str(img_path))
+        print(f"[LINE] 检测到 {len(lines)} 条分隔线")
+    except Exception as e:
+        print(f"[LINE] 检测失败: {e}")
+        lines, line_vis = [], None
+
+    # ─── 用线精炼区域（先精炼，再 LLM，确保 LLM 分析的是最终区域） ───
+    if lines:
+        try:
+            pre_count = len(regions)
+            img_h, img_w = annotated.shape[:2]
+            regions = refine_regions_with_lines(regions, lines, img_w, img_h)
+            print(f"[REFINE] 区域: {pre_count} → {len(regions)}（用实体线切分）")
+            # 重新渲染标注图
+            from detector import COLORS as DET_COLORS
+            canvas2 = cv2.imread(str(img_path))
+            for r in regions:
+                x1, y1, x2, y2 = r["bbox"]
+                color = DET_COLORS.get(r["type"], (128, 128, 128))
+                cv2.rectangle(canvas2, (x1, y1), (x2, y2), color, 3)
+                label = f"[{r['id']}] {r['desc']}"
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                cv2.rectangle(canvas2, (max(0, x1), max(0, y1 - th - 8)),
+                              (max(0, x1) + tw + 8, y1), color, -1)
+                cv2.putText(canvas2, label, (max(0, x1) + 4, y1 - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            annotated = canvas2
+        except Exception as e:
+            print(f"[REFINE] 精炼失败: {e}")
+
+    # ─── 自动 LLM 理解（精炼之后，分析的是最终区域） ───
     cfg = load_config()
     if cfg.get("llm_api_key"):
         try:
@@ -128,14 +161,6 @@ def analyze():
             print(f"[LLM] 理解完成: {len(regions)} 个区域")
         except Exception as e:
             print(f"[LLM] 理解失败: {e}")
-
-    # ─── 线检测（始终进行，作为参考） ───
-    try:
-        lines, line_vis = detect_lines_in_image(str(img_path))
-        print(f"[LINE] 检测到 {len(lines)} 条分隔线")
-    except Exception as e:
-        print(f"[LINE] 检测失败: {e}")
-        lines, line_vis = [], None
 
     # 保存标注图
     annot_name = f"{uid}_annotated.png"
