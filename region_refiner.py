@@ -132,7 +132,7 @@ def _merge_adjacent_regions(regions, lines):
     return sorted_r
 
 
-def refine_regions_with_lines(regions, lines, img_w, img_h):
+def refine_regions_with_lines(regions, lines, img_w, img_h, return_split_vis=False):
     """
     用分隔线精炼 region 列表。
 
@@ -142,7 +142,13 @@ def refine_regions_with_lines(regions, lines, img_w, img_h):
       - 切开后的子 region 根据位置重新分类 type
       - 切完后合并相邻同类型小区域（无线间隔的两行标题等）
 
-    返回新的 regions 列表（id 重新编号）。
+    参数:
+        return_split_vis: 如果为 True，额外返回 (split_regions, split_pieces)
+                          用于生成切割步骤可视化
+
+    返回:
+        默认返回新的 regions 列表（id 重新编号）
+        如果 return_split_vis=True，返回 (regions, split_regions, split_pieces)
     """
     # 取出横竖实体线
     h_lines = sorted([
@@ -156,6 +162,8 @@ def refine_regions_with_lines(regions, lines, img_w, img_h):
     ], key=lambda l: l["position"])
 
     refined = []
+    split_regions = []   # 被切的原始 region（切割步骤可视化用）
+    split_pieces = []    # 切出来的碎片 bbox（切割步骤可视化用）
     for r in regions:
         bbox = r["bbox"]
         x1, y1, x2, y2 = bbox
@@ -176,6 +184,13 @@ def refine_regions_with_lines(regions, lines, img_w, img_h):
 
         # 有穿越线 → 递归切分
         pieces = _split_piece(bbox, crossing_h, crossing_v)
+
+        if return_split_vis:
+            split_regions.append(r)
+            for p in pieces:
+                px1, py1, px2, py2 = p
+                if px2 - px1 >= 10 and py2 - py1 >= 10:
+                    split_pieces.append(p)
 
         # 给每块重新分类
         for p in pieces:
@@ -215,6 +230,8 @@ def refine_regions_with_lines(regions, lines, img_w, img_h):
     for i, r in enumerate(refined):
         r["id"] = i + 1
 
+    if return_split_vis:
+        return refined, split_regions, split_pieces
     return refined
 
 

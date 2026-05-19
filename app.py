@@ -130,14 +130,41 @@ def analyze():
         lines, line_vis = [], None
 
     # ─── 用线精炼区域（只精炼数据，标注图保持 OpenCV 原样以避免杂乱） ───
+    split_vis_name = None
     if lines:
         try:
             pre_count = len(regions)
             img_h, img_w = annotated.shape[:2]
-            regions = refine_regions_with_lines(regions, lines, img_w, img_h)
+            regions, split_regions, split_pieces = refine_regions_with_lines(
+                regions, lines, img_w, img_h, return_split_vis=True)
             print(f"[REFINE] 区域: {pre_count} → {len(regions)}（用实体线切分+合并）")
+
+            # 生成线切割步骤可视化（只画被切的区域和实体线，不画小元素）
+            if split_regions:
+                split_vis = cv2.imread(str(img_path))
+                for r in split_regions:
+                    x1, y1, x2, y2 = r["bbox"]
+                    cv2.rectangle(split_vis, (x1, y1), (x2, y2), (255, 0, 0), 3)  # 蓝：切之前
+                for p in split_pieces:
+                    x1, y1, x2, y2 = p
+                    cv2.rectangle(split_vis, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 绿：切之后
+                for l in lines:
+                    if l["line_type"] == "实体线":
+                        color = (0, 0, 255) if l["orientation"] == "horizontal" else (255, 0, 255)
+                        if l["orientation"] == "horizontal":
+                            cv2.line(split_vis, (int(l["start"]), int(l["position"])),
+                                     (int(l["end"]), int(l["position"])), color, 2)
+                        else:
+                            cv2.line(split_vis, (int(l["position"]), int(l["start"])),
+                                     (int(l["position"]), int(l["end"])), color, 2)
+                split_vis_name = f"{uid}_split_step.png"
+                cv2.imwrite(str(OUTPUT / split_vis_name), split_vis)
+                print(f"[REFINE] 切割可视化已保存")
+            else:
+                split_vis_name = None
         except Exception as e:
             print(f"[REFINE] 精炼失败: {e}")
+            split_vis_name = None
 
     # ─── 自动 LLM 理解（精炼之后，分析的是最终区域） ───
     cfg = load_config()
@@ -168,6 +195,7 @@ def analyze():
         "image": f"/uploads/{img_name}",
         "annotated": f"/output/{annot_name}",
         "lines_image": f"/output/{line_vis_name}" if line_vis_name else None,
+        "split_step_image": f"/output/{split_vis_name}" if split_vis_name else None,
         "regions": regions,
         "lines": lines,
         "mode": mode,
