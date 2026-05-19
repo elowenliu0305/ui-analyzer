@@ -197,8 +197,25 @@ header p  { color: #666; font-size: 14px; margin-top: 4px; }
 /* ─── Region List ─── */
 .region-list { max-height: 600px; overflow-y: auto; }
 
-/* 区域分组 */
-.region-section { margin-bottom: 16px; }
+/* 段落分组（外层） */
+.section-group {
+  margin-bottom: 20px;
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 8px;
+}
+.section-group-header {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  color: #333;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* 交互功能分组（内层） */
+.region-section { margin-bottom: 12px; }
 .section-header {
   font-size: 14px;
   font-weight: 700;

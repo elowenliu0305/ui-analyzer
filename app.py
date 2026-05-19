@@ -15,7 +15,7 @@ from detector import detect_regions
 from detector_sam import SAMDetector
 from llm_analyzer import analyze_regions_with_llm
 from line_detector import detect_lines as detect_lines_in_image
-from region_refiner import refine_regions_with_lines
+from region_refiner import refine_regions_with_lines, assign_sections
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
@@ -166,6 +166,50 @@ def analyze():
             print(f"[REFINE] 精炼失败: {e}")
             split_vis_name = None
 
+    # ─── 用水平实体线分配段落（每个 region 获得 section 信息） ───
+    sections_vis_name = None
+    if lines:
+        try:
+            regions = assign_sections(regions, lines, img_h)
+
+            # 生成段落可视化：半透明彩色条带 + 实体线
+            sections_vis = cv2.imread(str(img_path))
+            h_lines = sorted([
+                l for l in lines
+                if l["orientation"] == "horizontal" and l["line_type"] == "实体线"
+            ], key=lambda l: l["position"])
+
+            n_sec = len(h_lines) + 1
+            section_colors = [
+                (255, 200, 100), (100, 200, 255), (100, 255, 180),
+                (200, 150, 255), (255, 150, 150), (180, 255, 100),
+            ]
+            boundaries = [0] + [int(l["position"]) for l in h_lines] + [img_h]
+            overlay = sections_vis.copy()
+            for i in range(n_sec):
+                color = section_colors[i % len(section_colors)]
+                cv2.rectangle(overlay, (0, boundaries[i]),
+                              (img_w, boundaries[i + 1]), color, -1)
+            cv2.addWeighted(overlay, 0.25, sections_vis, 0.75, 0, sections_vis)
+
+            for l in h_lines:
+                cv2.line(sections_vis,
+                         (int(l["start"]), int(l["position"])),
+                         (int(l["end"]), int(l["position"])), (0, 0, 255), 2)
+
+            for i in range(n_sec):
+                my = (boundaries[i] + boundaries[i + 1]) // 2
+                label = f"区域 {i + 1}"
+                cv2.putText(sections_vis, label, (12, my + 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+            sections_vis_name = f"{uid}_sections.png"
+            cv2.imwrite(str(OUTPUT / sections_vis_name), sections_vis)
+            n_assigned = len(set(r.get("section", {}).get("id", -1) for r in regions))
+            print(f"[SECTIONS] {n_sec} 个段落, {n_assigned} 个段被分配")
+        except Exception as e:
+            print(f"[SECTIONS] 段落分配失败: {e}")
+
     # ─── 自动 LLM 理解（精炼之后，分析的是最终区域） ───
     cfg = load_config()
     if cfg.get("llm_api_key"):
@@ -196,6 +240,7 @@ def analyze():
         "annotated": f"/output/{annot_name}",
         "lines_image": f"/output/{line_vis_name}" if line_vis_name else None,
         "split_step_image": f"/output/{split_vis_name}" if split_vis_name else None,
+        "sections_image": f"/output/{sections_vis_name}" if sections_vis_name else None,
         "regions": regions,
         "lines": lines,
         "mode": mode,

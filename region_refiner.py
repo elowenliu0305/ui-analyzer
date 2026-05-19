@@ -300,3 +300,68 @@ def _region_action(rtype):
         "list": "点击进入", "avatar": "点击查看",
     }
     return actions.get(rtype, "可能可点击")
+
+
+def assign_sections(regions, lines, img_h):
+    """
+    用水平实体线将页面划分为横向大段，为每个 region 分配归属段。
+
+    核心逻辑：
+      - 用水平实体线作为段边界
+      - 每条线定义段的底边界（上一条线的位置到这条线的位置为一个段）
+      - 第 0 段从 0 到第一条线，最后一段从最后一条线到 img_h
+      - 每个 region 根据其垂直中心落入的段来分配 section_id
+      - 如果 region 跨越段边界，将其 bbox 裁剪到所属段内
+      - 没有实体线时，整个页面为单一 section
+
+    每个 region 获得字段：
+      section: {id: int, label: str} — 段 ID 和百分比范围标签
+
+    返回：添加了 section 字段的 regions 列表
+    """
+    # 取出水平实体线，按位置排序
+    h_positions = sorted([
+        l["position"] for l in lines
+        if l["orientation"] == "horizontal" and l["line_type"] == "实体线"
+    ])
+
+    # 构建段边界：[0, line1, line2, ..., img_h]
+    boundaries = [0.0] + [float(p) for p in h_positions] + [float(img_h)]
+
+    # 去重/合并太近的边界（< 10px 视为同一条）
+    cleaned = [boundaries[0]]
+    for b in boundaries[1:]:
+        if b - cleaned[-1] >= 10:
+            cleaned.append(b)
+    boundaries = cleaned
+
+    n_sections = len(boundaries) - 1
+
+    for r in regions:
+        bbox = r["bbox"]
+        y1, y2 = bbox[1], bbox[3]
+        cy = (y1 + y2) / 2.0
+
+        # 找 cy 落在哪个段
+        sid = 0
+        for i in range(n_sections):
+            if boundaries[i] <= cy < boundaries[i + 1]:
+                sid = i
+                break
+        else:
+            sid = n_sections - 1  # 落在最后一条线之后 → 最后一段
+
+        # 如果 region 跨越段边界，裁剪到所属段
+        if y1 < boundaries[sid]:
+            bbox[1] = int(boundaries[sid])
+        if y2 > boundaries[sid + 1]:
+            bbox[3] = int(boundaries[sid + 1])
+
+        section_top_pct = boundaries[sid] / img_h * 100
+        section_bot_pct = boundaries[sid + 1] / img_h * 100
+        r["section"] = {
+            "id": sid,
+            "label": f"区域{sid + 1} ({section_top_pct:.0f}%-{section_bot_pct:.0f}%)",
+        }
+
+    return regions
