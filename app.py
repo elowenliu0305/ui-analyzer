@@ -129,27 +129,13 @@ def analyze():
         print(f"[LINE] 检测失败: {e}")
         lines, line_vis = [], None
 
-    # ─── 用线精炼区域（先精炼，再 LLM，确保 LLM 分析的是最终区域） ───
+    # ─── 用线精炼区域（只精炼数据，标注图保持 OpenCV 原样以避免杂乱） ───
     if lines:
         try:
             pre_count = len(regions)
             img_h, img_w = annotated.shape[:2]
             regions = refine_regions_with_lines(regions, lines, img_w, img_h)
-            print(f"[REFINE] 区域: {pre_count} → {len(regions)}（用实体线切分）")
-            # 重新渲染标注图
-            from detector import COLORS as DET_COLORS
-            canvas2 = cv2.imread(str(img_path))
-            for r in regions:
-                x1, y1, x2, y2 = r["bbox"]
-                color = DET_COLORS.get(r["type"], (128, 128, 128))
-                cv2.rectangle(canvas2, (x1, y1), (x2, y2), color, 3)
-                label = f"[{r['id']}] {r['desc']}"
-                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-                cv2.rectangle(canvas2, (max(0, x1), max(0, y1 - th - 8)),
-                              (max(0, x1) + tw + 8, y1), color, -1)
-                cv2.putText(canvas2, label, (max(0, x1) + 4, y1 - 4),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            annotated = canvas2
+            print(f"[REFINE] 区域: {pre_count} → {len(regions)}（用实体线切分+合并）")
         except Exception as e:
             print(f"[REFINE] 精炼失败: {e}")
 
