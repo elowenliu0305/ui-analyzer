@@ -337,6 +337,73 @@ def merge_nearby_lines(lines):
     return merge_group(horiz, MERGE_DIST_H) + merge_group(vert, MERGE_DIST_V)
 
 
+def detect_lines_column_projection(gray):
+    """
+    用 Sobel X 列投影检测垂直线——捕捉形态学和颜色统计都遗漏的列边界。
+
+    算法：
+      1. Sobel X 算子得到垂直边缘响应
+      2. 阈值化保留强边缘
+      3. 逐列求和得到投影曲线
+      4. 平滑后找波峰
+      5. 波峰位置 > 阈值 → 垂直线候选
+
+    适合检测两类被现有方法遗漏的竖线：
+      - Canny 无法捕捉的弱边缘（细边框、浅色分割线）
+      - 颜色统计无法捕捉的薄结构边界（两侧颜色相近但存在细线分隔）
+    """
+    # Sobel X（垂直边缘）
+    sobelx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    sobelx_abs = cv2.convertScaleAbs(sobelx)
+
+    # 阈值化
+    _, strong = cv2.threshold(sobelx_abs, 35, 255, cv2.THRESH_BINARY)
+
+    h, w = gray.shape[:2]
+
+    # 逐列求和
+    col_sum = np.sum(strong, axis=0).astype(np.float32)  # (w,)
+
+    # 平滑
+    kernel = np.ones(7) / 7
+    col_smooth = np.convolve(col_sum, kernel, mode='same')
+
+    # 动态阈值：取百分位数
+    thresh = max(100, np.percentile(col_smooth, 98))
+
+    result = []
+    in_peak = False
+    peak_max = 0
+    peak_pos = 0
+
+    for x in range(1, w - 1):
+        if col_smooth[x] > thresh:
+            if not in_peak:
+                in_peak = True
+                peak_max = col_smooth[x]
+                peak_pos = x
+            elif col_smooth[x] > peak_max:
+                peak_max = col_smooth[x]
+                peak_pos = x
+        else:
+            if in_peak:
+                in_peak = False
+                # 取波峰最大值位置（不限制宽度，宽波峰仍取最强列）
+                grad = float(np.max(sobelx_abs[:, peak_pos]))
+                if grad > 0:
+                    result.append(DetectedLine(
+                        orientation="vertical",
+                        position=float(peak_pos),
+                        start=0.0,
+                        end=float(h),
+                        line_type="",
+                        confidence=min(0.8, peak_max / thresh / 2),
+                        gradient_mag=grad,
+                    ))
+
+    return result
+
+
 def detect_lines(img_path):
     """
     主入口：检测图片中的所有分隔线。
@@ -358,6 +425,9 @@ def detect_lines(img_path):
 
     # ─── 第二阶段：颜色统计法检测界面线候选 ───
     candidates += detect_lines_interface((gray, img))
+
+    # ─── 第三阶段：Sobel 列投影检测竖线候选（补漏：细边框、薄分割线） ───
+    candidates += detect_lines_column_projection(gray)
 
     # ─── 合并邻近线 ───
     candidates = merge_nearby_lines(candidates)
